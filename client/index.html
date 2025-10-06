@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Sensor-to-WS - Prototype</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="container">
+<h1>Sensor → WebSocket</h1>
+
+
+<section class="controls">
+<label>Server WebSocket (ws://IP:8765)
+<input id="serverInput" type="text" placeholder="ws://192.168.x.y:8765" />
+</label>
+
+
+<label>Device ID
+<input id="deviceIdInput" type="text" placeholder="auto-généré" />
+</label>
+
+
+<label>Intervalle d'envoi (ms)
+<input id="intervalInput" type="number" min="20" step="10" value="100" />
+</label>
+
+
+<div class="buttons">
+<button id="permissionBtn">Demander permission (iOS)</button>
+<button id="startBtn" class="primary">Démarrer</button>
+<button id="stopBtn" class="danger" disabled>Arrêter</button>
+</div>
+
+
+<div class="status">
+<div>WS: <span id="wsStatus">déconnecté</span></div>
+<div>Seq: <span id="seq">0</span></div>
+<div>Dernier envoi: <span id="lastSent">—</span></div>
+<div>Paquet/s envoyé(s): <span id="sentCount">0</span></div>
+</div>
+</section>
+
+
+<section class="sensors">
+<h2>Valeurs capteurs (debug)</h2>
+<div id="sensorList" class="sensor-list">
+<!-- Valeurs mises à jour par app.js -->
+</div>
+</section>
+
+
+<footer>
+<small>Prototype local — compatible iOS/Android. Ouvrir la page depuis chaque téléphone (même réseau Wi‑Fi).</small>
+</footer>
+</main>
+
+
+<script src="app.js"></script>
+</body>
+</html>
