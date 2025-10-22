@@ -62,13 +62,14 @@ const title = document.createElement('h3');
 title.textContent = name;
 const pre = document.createElement('pre');
 pre.textContent = sensors[name] ? JSON.stringify(sensors[name], null, 2) : 'no data';
-// render loop for UI values
-if(sensors[name]){
+
+// NOUVEAU CODE (CORRIGÉ)
 (function update(){
-pre.textContent = JSON.stringify(sensors[name], null, 2);
-requestAnimationFrame(update);
+    // On vérifie la donnée A L'INTÉRIEUR de la boucle
+    pre.textContent = sensors[name] ? JSON.stringify(sensors[name], null, 2) : 'no data';
+    requestAnimationFrame(update);
 })();
-}
+
 card.appendChild(title);
 card.appendChild(pre);
 sensorList.appendChild(card);
@@ -151,6 +152,7 @@ sendTimer = null;
 // request permission for motion sensors (iOS)
 function requestPermission(){
 if(typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function'){
+// iOS-style permission
 DeviceMotionEvent.requestPermission()
 .then(response => {
 if(response === 'granted'){
@@ -158,11 +160,23 @@ setupSensors();
 permissionBtn.style.display = 'none';
 startBtn.style.display = 'inline-block';
 }else{
-alert('Permission denied for motion sensors');
+console.warn('DeviceMotion permission response:', response);
+alert(
+'Permission refusée pour les capteurs.\n\n' +
+'Sur iOS Safari les capteurs exigent un contexte sécurisé (HTTPS) ou "localhost".\n' +
+'Solutions :\n' +
+'- Servir la page via HTTPS (ex : utiliser ngrok : "ngrok http 8000")\n' +
+'- Ouvrir la page sur localhost depuis le même appareil\n\n' +
+'Vérifie la console pour plus de détails.'
+);
 }
 })
-.catch(console.error);
+.catch(err => {
+console.error('Error requesting DeviceMotion permission:', err);
+alert('Erreur lors de la demande de permission : ' + (err && err.message ? err.message : String(err)));
+});
 }else{
+// Non-iOS : proceed with setting up sensors (may still require secure context)
 setupSensors();
 permissionBtn.style.display = 'none';
 startBtn.style.display = 'inline-block';

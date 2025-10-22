@@ -1,0 +1,12 @@
+version: "2"
+tunnels:
+    # Tunnel 1: Pour votre page web (HTML/JS)
+    web:
+        proto: http
+        addr: 8000
+    # Tunnel 2: Pour votre serveur WebSocket (Python)
+    websocket:
+        proto: http
+        addr: 8765
+        host_header: "localhost:8765"
+authtoken: 34QcYbdQLMYvCBRBaOF9qrvHz8s_6mhBW5vmeLDPxQ5DYNiPm
