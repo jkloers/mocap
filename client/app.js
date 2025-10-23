@@ -92,13 +92,12 @@ wsStatus.style.color = 'red';
 // start WebSocket connection
 function startWebSocket(){
     // 1. Déterminer le protocole (ws: ou wss:)
-    // Si la page est en 'https://' (comme ngrok), on utilise 'wss://' (sécurisé)
-    // Sinon, on utilise 'ws://' (local)
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     // 2. Récupérer l'hôte (ex: "localhost:8000" ou "votre-id.ngrok.io")
     const host = window.location.host;
-    // 3. Définir le chemin (celui dans votre main.py: @app.websocket("/ws"))
-    const path = '/ws';
+    // 3. Définir le chemin et le type de client
+    // On ajoute le paramètre client_type=source
+    const path = '/ws?client_type=source'; 
     // 4. Construire l'URL complète
     const wsUrl = `${protocol}//${host}${path}`;
 
@@ -110,7 +109,7 @@ function startWebSocket(){
     updateWsStatus();
     ws.onopen = () => {
         updateWsStatus();
-        console.log('WebSocket connected');
+        console.log('WebSocket connected as SOURCE'); // Mise à jour du log
     };
     ws.onclose = () => {
         updateWsStatus();
