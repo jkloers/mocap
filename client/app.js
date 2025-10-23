@@ -63,9 +63,8 @@ title.textContent = name;
 const pre = document.createElement('pre');
 pre.textContent = sensors[name] ? JSON.stringify(sensors[name], null, 2) : 'no data';
 
-// NOUVEAU CODE (CORRIGÉ)
+
 (function update(){
-    // On vérifie la donnée A L'INTÉRIEUR de la boucle
     pre.textContent = sensors[name] ? JSON.stringify(sensors[name], null, 2) : 'no data';
     requestAnimationFrame(update);
 })();
@@ -92,25 +91,36 @@ wsStatus.style.color = 'red';
 
 // start WebSocket connection
 function startWebSocket(){
-const url = serverInput.value.trim();
-if(!url){
-alert('Please enter WebSocket server URL');
-return;
+    // 1. Déterminer le protocole (ws: ou wss:)
+    // Si la page est en 'https://' (comme ngrok), on utilise 'wss://' (sécurisé)
+    // Sinon, on utilise 'ws://' (local)
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    // 2. Récupérer l'hôte (ex: "localhost:8000" ou "votre-id.ngrok.io")
+    const host = window.location.host;
+    // 3. Définir le chemin (celui dans votre main.py: @app.websocket("/ws"))
+    const path = '/ws';
+    // 4. Construire l'URL complète
+    const wsUrl = `${protocol}//${host}${path}`;
+
+    console.log(`Connexion WebSocket auto à: ${wsUrl}`); // Utile pour déboguer
+
+    // 5. Utiliser cette URL
+    ws = new WebSocket(wsUrl); 
+    
+    updateWsStatus();
+    ws.onopen = () => {
+        updateWsStatus();
+        console.log('WebSocket connected');
+    };
+    ws.onclose = () => {
+        updateWsStatus();
+        console.log('WebSocket disconnected');
+    };
+    ws.onerror = (err) => {
+        console.error('WebSocket error', err);
+    };
 }
-ws = new WebSocket(url);
-updateWsStatus();
-ws.onopen = () => {
-updateWsStatus();
-console.log('WebSocket connected');
-};
-ws.onclose = () => {
-updateWsStatus();
-console.log('WebSocket disconnected');
-};
-ws.onerror = (err) => {
-console.error('WebSocket error', err);
-};
-}
+
 // stop WebSocket connection
 function stopWebSocket(){
 if(ws){

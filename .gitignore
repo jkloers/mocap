@@ -1,1 +1,3 @@
 env_mocap
+node_modules
+.DS_Store

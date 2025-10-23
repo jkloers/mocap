@@ -1,2 +1,5 @@
 websockets
 python-osc   # Only if using OSC
+fastapi 
+uvicorn
+python-osc
