@@ -11,8 +11,8 @@ from pythonosc.udp_client import SimpleUDPClient
 WS_SERVER_URI = "ws://127.0.0.1:8000/ws?client_type=receiver"
 
 # Destination OSC (VCV Rack / MaxMSP)
-OSC_IP = "127.0.0.1"
-OSC_PORT = 9000
+OSC_IP = "224.0.0.1"
+OSC_PORT = 8000
 
 # Base de l'adresse OSC (les capteurs seront envoyés sous /mocap/<deviceId>/...)
 OSC_BASE = "/mocap"
