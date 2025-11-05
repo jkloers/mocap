@@ -6,8 +6,18 @@ import json
 from typing import Set
 import asyncio
 
-# Initialiser l'application FastAPI
-# L'instance de ConnectionManager sera maintenant gérée par l'application
+# Gestin des buffers
+from models.buffer import SensorBuffer
+
+# Paramètres du buffer
+WINDOW_SIZE = 100
+STEP_SIZE = 50
+NUM_FEATURES = 9
+
+# Initialiser votre buffer (et votre modèle) UNE SEULE FOIS
+sensor_buffer = SensorBuffer(WINDOW_SIZE, STEP_SIZE, NUM_FEATURES)
+
+# Création de l'application FastAPI
 app = FastAPI()
 
 # --- CLASSE DE GESTION DES CONNEXIONS AMÉLIORÉE ---
@@ -60,7 +70,6 @@ def get_manager():
     return manager
 
 # --- Endpoint WebSocket ---
-# Ajout d'un paramètre de requête 'client_type' pour identifier le rôle
 @app.websocket("/ws")
 async def websocket_endpoint(
     websocket: WebSocket,
@@ -87,6 +96,50 @@ async def websocket_endpoint(
                     print("[SERVER 8000] Reçu un message non-texte.")
                     continue
 
+                # Intégrer les données dans le buffer
+                try:
+                    payload = json.loads(data)
+                    sensors = payload.get("sensors", {}) or {}
+
+                    accel = sensors.get("accelerometer") or sensors.get("acceleration") or {}
+                    gyro = sensors.get("gyroscope") or {}
+                    orientation = sensors.get("orientation") or {}
+
+                    def to_float(v, default=0.0):
+                        try:
+                            return float(v)
+                        except Exception:
+                            return float(default)
+
+                    ax = to_float(accel.get("x") if "x" in accel else accel.get("alpha"))
+                    ay = to_float(accel.get("y") if "y" in accel else accel.get("beta"))
+                    az = to_float(accel.get("z") if "z" in accel else accel.get("gamma"))
+
+                    # gyroscope may be provided as x,y,z or alpha,beta,gamma
+                    if all(k in gyro for k in ("x", "y", "z")):
+                        gx = to_float(gyro.get("x"))
+                        gyv = to_float(gyro.get("y"))
+                        gz = to_float(gyro.get("z"))
+                    else:
+                        gx = to_float(gyro.get("alpha"))
+                        gyv = to_float(gyro.get("beta"))
+                        gz = to_float(gyro.get("gamma"))
+
+                    # orientation as alpha,beta,gamma
+                    oa = to_float(orientation.get("alpha"))
+                    ob = to_float(orientation.get("beta"))
+                    oc = to_float(orientation.get("gamma"))
+
+                    sample = [ax, ay, az, gx, gyv, gz, oa, ob, oc]
+
+                    # Ajouter l'échantillon au buffer (la méthode gère la fenêtre et l'appel à process_window)
+                    sensor_buffer.add_data(sample)
+
+                except json.JSONDecodeError:
+                    print("[BUFFER] JSON invalide, skip buffer add.")
+                except Exception as e:
+                    print(f"[BUFFER] Erreur ajout buffer: {e}")
+
                 # 2. DIFFUSER le message à TOUS les 'receivers'
                 await manager.broadcast(data)
                 
@@ -108,7 +161,6 @@ async def websocket_endpoint(
         print(f"Erreur inattendue dans l'endpoint WS: {e}")
         manager.disconnect(websocket)
 
-
 # --- Configuration des fichiers statiques ---
 CLIENT_DIR = Path(__file__).resolve().parent.parent / "client"
 app.mount("/", StaticFiles(directory=CLIENT_DIR, html=True), name="static")
@@ -117,3 +169,4 @@ app.mount("/", StaticFiles(directory=CLIENT_DIR, html=True), name="static")
 if __name__ == "__main__":
     print("Lancement du serveur web + WebSocket sur http://localhost:8000")
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
