@@ -5,6 +5,10 @@ from pathlib import Path
 import json
 from typing import Set
 import asyncio
+import os
+import sys
+# place l'emplacement a la racine du projet
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Gestin des buffers
 from models.buffer import SensorBuffer

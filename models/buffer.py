@@ -2,66 +2,89 @@ import collections
 import numpy as np
 import time
 
-# --- Vos paramètres ---
-WINDOW_SIZE = 100  # 100 échantillons par fenêtre (ex: 2s @ 50Hz)
-STEP_SIZE = 50     # Créer une nouvelle fenêtre tous les 50 nouveaux échantillons (chevauchement de 50%)
-NUM_FEATURES = 6   # Nombre de features (ex: AccelX, Y, Z, GyroX, Y, Z)
-
 class SensorBuffer:
     def __init__(self, window_size, step_size, num_features):
         self.window_size = window_size
         self.step_size = step_size
         self.num_features = num_features
         
-        # Le buffer principal qui se comporte comme une fenêtre glissante.
-        # Il ne contiendra jamais plus de 'window_size' éléments.
         self.window_buffer = collections.deque(maxlen=window_size)
-        
-        # Un compteur pour savoir quand déclencher le traitement (basé sur STEP_SIZE)
         self.new_sample_counter = 0
+        
+        # --- CHARGEMENT DU MODÈLE ---
+        # Charge ton modèle ML (ex: .pkl, .h5, .pt) UNE SEULE FOIS
+        try:
+            # Remplace 'mon_modele.pkl' par le chemin vers ton fichier
+            self.model =  True #'''joblib.load('mon_modele.pkl')'''
+            print("[Buffer] Modèle 'mon_modele.pkl' chargé avec succès.")
+        except FileNotFoundError:
+            print("[Buffer] ATTENTION: 'mon_modele.pkl' non trouvé. Le buffer fonctionnera sans prédiction.")
+            self.model = None
+        except Exception as e:
+            print(f"[Buffer] Erreur au chargement du modèle: {e}")
+            self.model = None
 
     def add_data(self, sample):
-        """
-        Ajoute un nouvel échantillon de capteur au buffer.
-        L'échantillon doit être une liste ou un tuple (ex: [ax, ay, az, gx, gy, gz])
-        """
         if len(sample) != self.num_features:
             print(f"Erreur : L'échantillon a {len(sample)} features, mais {self.num_features} sont attendues.")
             return
 
-        # 1. Ajouter le nouvel échantillon à la fenêtre glissante
         self.window_buffer.append(sample)
         self.new_sample_counter += 1
 
-        # 2. Vérifier si le buffer est plein (pour la première fois au moins)
         if len(self.window_buffer) == self.window_size:
-            
-            # 3. Vérifier s'il est temps de créer une nouvelle fenêtre (basé sur STEP_SIZE)
             if self.new_sample_counter >= self.step_size:
-                # C'est le moment !
-                self.process_window()
-                
-                # Réinitialiser le compteur de pas
+                result = self.process_window()
                 self.new_sample_counter = 0
+                return result
+            else:
+                return None
+        else:
+            return None
 
     def process_window(self):
         """
-        Appelé lorsque le buffer est plein et que le 'step_size' est atteint.
-        C'est ici que vous envoyez les données au modèle ML.
+        C'EST ICI QUE LA MAGIE OPÈRE.
+        Appelé par add_data() quand une fenêtre est prête.
         """
         
-        # 'window_buffer' est une deque. Convertissez-la en une structure
-        # que votre modèle ML peut lire (ex: un array NumPy).
-        # La forme sera (WINDOW_SIZE, NUM_FEATURES)
+        # 1. Préparer les données pour le modèle
+        # window_data aura la forme (WINDOW_SIZE, NUM_FEATURES)
         window_data = np.array(list(self.window_buffer))
         
-        print(f"Traitement d'une fenêtre de forme : {window_data.shape}")
-        
-        # --- C'EST ICI QUE MAGIE OPÈRE ---
-        # 1. (Optionnel) Extraire des features (moyenne, variance, FFT...)
-        #    features = extract_features(window_data)
-        # 2. Envoyer au modèle ML pour prédiction
-        #    prediction = self.ml_model.predict(np.expand_dims(window_data, axis=0))
-        #    print(f"Prédiction : {prediction}")
-        # ------------------------------------
-        pass
+        # 2. Vérifier si le modèle est chargé
+        if self.model:
+            try:
+                # 3. Adapter la forme (shape)
+                # La plupart des modèles (Keras, Sklearn) attendent un "batch"
+                # (1, WINDOW_SIZE, NUM_FEATURES) ou (1, N_FEATURES_EXTRAITES)
+                # Cet exemple suppose (1, 100, 9)
+                model_input = np.expand_dims(window_data, axis=0)
+                
+                # 4. PRÉDICTION
+                start_time = time.time()
+                ''' prediction = self.model.predict(model_input) '''
+                resultat = 10
+                end_time = time.time()
+                
+                print("INPUTS IN BUFFER : ", model_input)
+                
+                # 5. UTILISER LE RÉSULTAT
+                # 'prediction' peut être [0] ou [[0.1, 0.9]] selon ton modèle
+                ''' resultat = prediction[0] '''
+                
+                print(f"--- PRÉDICTION ML ---")
+                print(f"  Résultat: {resultat} (calculé en {(end_time - start_time) * 1000:.2f} ms)")
+                print(f"  Basé sur une fenêtre de {window_data.shape}")
+                print(f"----------------------")
+
+                # use the result to send it back as a websocket message 
+                # can also send a OSC message to the receiver
+                return resultat
+
+            except Exception as e:
+                print(f"[ML Error] Erreur lors de la prédiction: {e}")
+                return None
+        else:
+            print(f"Traitement fenêtre {window_data.shape}, mais aucun modèle n'est chargé.")
+            return None

@@ -25,6 +25,8 @@ let seq = 0;
 let sendInterval = Number(intervalInput.value) || 100;
 let sendTimer = null;
 let sentCount = 0;
+const PREDICTION_HOLD_STEPS = 99; // WINDOW_SIZE - 1 côté serveur
+let predictionTicksRemaining = 0;
 
 
 // latest sensor readings
@@ -135,6 +137,7 @@ function startWebSocket(){
                     ? JSON.stringify(payload.result)
                     : String(payload.result);
                 latestPredictionEl.textContent = value;
+                predictionTicksRemaining = PREDICTION_HOLD_STEPS;
 
                 const entry = document.createElement('div');
                 entry.className = 'prediction-entry';
@@ -174,6 +177,14 @@ seqEl.textContent = String(seq);
 lastSentEl.textContent = new Date().toLocaleTimeString();
 sentCount++;
 sentCountEl.textContent = sentCount;
+
+if(predictionTicksRemaining > 0){
+predictionTicksRemaining -= 1;
+if(predictionTicksRemaining <= 0){
+predictionTicksRemaining = 0;
+latestPredictionEl.textContent = '—';
+}
+}
 }
 
 // start sending data at intervals
