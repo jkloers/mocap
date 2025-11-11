@@ -49,7 +49,7 @@ class ConnectionManager:
         self.source_connections.discard(websocket)
         self.receiver_connections.discard(websocket)
 
-    async def broadcast(self, message: str):
+    async def broadcast_to_receivers(self, message: str):
         """
         Diffuse le message à TOUS les clients 'receiver' (ponts OSC, etc.)
         Cette méthode garantit que les 'source' n'ont pas de trafic inutile.
@@ -58,8 +58,19 @@ class ConnectionManager:
         # On itère UNIQUEMENT sur les récepteurs
         for connection in self.receiver_connections:
             tasks.append(connection.send_text(message))
-            
+
         # Exécuter les envois et ignorer les erreurs de déconnexion (return_exceptions=True)
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def broadcast_to_sources(self, message: str):
+        """
+        Diffuse le message à TOUS les clients 'source' (interface web) pour
+        leur permettre d'afficher les prédictions du modèle.
+        """
+        tasks = []
+        for connection in self.source_connections:
+            tasks.append(connection.send_text(message))
+
         await asyncio.gather(*tasks, return_exceptions=True)
 
 # Création du gestionnaire unique (injection de dépendance)
@@ -141,13 +152,22 @@ async def websocket_endpoint(
                     print(f"[BUFFER] Erreur ajout buffer: {e}")
 
                 # 2. DIFFUSER le message à TOUS les 'receivers'
-                await manager.broadcast(data)
+                await manager.broadcast_to_receivers(data)
                 
         # Les clients 'receiver' attendent simplement d'être déconnectés par le serveur
         # ou ils bouclent côté client (comme osc_sender.py)
         else:
-            # Maintient la connexion ouverte pour que 'osc_sender.py' puisse recevoir le broadcast
-            await websocket.receive_text() 
+            # Écoute des messages envoyés par les receivers (ex: les prédictions du modèle)
+            while True:
+                prediction_message = await websocket.receive_text()
+                try:
+                    print(f"[SERVER 8000] Reçu data receiver : {prediction_message[:50]}...")
+                except Exception:
+                    print("[SERVER 8000] Reçu un message receiver non-texte.")
+                    continue
+
+                # Diffuser la prédiction à tous les clients source (interface web)
+                await manager.broadcast_to_sources(prediction_message)
 
 
     except WebSocketDisconnect:
