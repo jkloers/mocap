@@ -5,9 +5,23 @@ from pathlib import Path
 import json
 from typing import Set
 import asyncio
+import os
+import sys
+# place l'emplacement a la racine du projet
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Initialiser l'application FastAPI
-# L'instance de ConnectionManager sera maintenant gérée par l'application
+# Gestin des buffers
+from models.buffer import SensorBuffer
+
+# Paramètres du buffer
+WINDOW_SIZE = 100
+STEP_SIZE = 50
+NUM_FEATURES = 9
+
+# Initialiser votre buffer (et votre modèle) UNE SEULE FOIS
+sensor_buffer = SensorBuffer(WINDOW_SIZE, STEP_SIZE, NUM_FEATURES)
+
+# Création de l'application FastAPI
 app = FastAPI()
 
 # --- CLASSE DE GESTION DES CONNEXIONS AMÉLIORÉE ---
@@ -39,7 +53,7 @@ class ConnectionManager:
         self.source_connections.discard(websocket)
         self.receiver_connections.discard(websocket)
 
-    async def broadcast(self, message: str):
+    async def broadcast_to_receivers(self, message: str):
         """
         Diffuse le message à TOUS les clients 'receiver' (ponts OSC, etc.)
         Cette méthode garantit que les 'source' n'ont pas de trafic inutile.
@@ -48,8 +62,19 @@ class ConnectionManager:
         # On itère UNIQUEMENT sur les récepteurs
         for connection in self.receiver_connections:
             tasks.append(connection.send_text(message))
-            
+
         # Exécuter les envois et ignorer les erreurs de déconnexion (return_exceptions=True)
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def broadcast_to_sources(self, message: str):
+        """
+        Diffuse le message à TOUS les clients 'source' (interface web) pour
+        leur permettre d'afficher les prédictions du modèle.
+        """
+        tasks = []
+        for connection in self.source_connections:
+            tasks.append(connection.send_text(message))
+
         await asyncio.gather(*tasks, return_exceptions=True)
 
 # Création du gestionnaire unique (injection de dépendance)
@@ -60,7 +85,6 @@ def get_manager():
     return manager
 
 # --- Endpoint WebSocket ---
-# Ajout d'un paramètre de requête 'client_type' pour identifier le rôle
 @app.websocket("/ws")
 async def websocket_endpoint(
     websocket: WebSocket,
@@ -87,14 +111,67 @@ async def websocket_endpoint(
                     print("[SERVER 8000] Reçu un message non-texte.")
                     continue
 
+                # Intégrer les données dans le buffer
+                try:
+                    payload = json.loads(data)
+                    sensors = payload.get("sensors", {}) or {}
+
+                    accel = sensors.get("accelerometer") or sensors.get("acceleration") or {}
+                    gyro = sensors.get("gyroscope") or {}
+                    orientation = sensors.get("orientation") or {}
+
+                    def to_float(v, default=0.0):
+                        try:
+                            return float(v)
+                        except Exception:
+                            return float(default)
+
+                    ax = to_float(accel.get("x") if "x" in accel else accel.get("alpha"))
+                    ay = to_float(accel.get("y") if "y" in accel else accel.get("beta"))
+                    az = to_float(accel.get("z") if "z" in accel else accel.get("gamma"))
+
+                    # gyroscope may be provided as x,y,z or alpha,beta,gamma
+                    if all(k in gyro for k in ("x", "y", "z")):
+                        gx = to_float(gyro.get("x"))
+                        gyv = to_float(gyro.get("y"))
+                        gz = to_float(gyro.get("z"))
+                    else:
+                        gx = to_float(gyro.get("alpha"))
+                        gyv = to_float(gyro.get("beta"))
+                        gz = to_float(gyro.get("gamma"))
+
+                    # orientation as alpha,beta,gamma
+                    oa = to_float(orientation.get("alpha"))
+                    ob = to_float(orientation.get("beta"))
+                    oc = to_float(orientation.get("gamma"))
+
+                    sample = [ax, ay, az, gx, gyv, gz, oa, ob, oc]
+
+                    # Ajouter l'échantillon au buffer (la méthode gère la fenêtre et l'appel à process_window)
+                    sensor_buffer.add_data(sample)
+
+                except json.JSONDecodeError:
+                    print("[BUFFER] JSON invalide, skip buffer add.")
+                except Exception as e:
+                    print(f"[BUFFER] Erreur ajout buffer: {e}")
+
                 # 2. DIFFUSER le message à TOUS les 'receivers'
-                await manager.broadcast(data)
+                await manager.broadcast_to_receivers(data)
                 
         # Les clients 'receiver' attendent simplement d'être déconnectés par le serveur
         # ou ils bouclent côté client (comme osc_sender.py)
         else:
-            # Maintient la connexion ouverte pour que 'osc_sender.py' puisse recevoir le broadcast
-            await websocket.receive_text() 
+            # Écoute des messages envoyés par les receivers (ex: les prédictions du modèle)
+            while True:
+                prediction_message = await websocket.receive_text()
+                try:
+                    print(f"[SERVER 8000] Reçu data receiver : {prediction_message[:50]}...")
+                except Exception:
+                    print("[SERVER 8000] Reçu un message receiver non-texte.")
+                    continue
+
+                # Diffuser la prédiction à tous les clients source (interface web)
+                await manager.broadcast_to_sources(prediction_message)
 
 
     except WebSocketDisconnect:
@@ -108,7 +185,6 @@ async def websocket_endpoint(
         print(f"Erreur inattendue dans l'endpoint WS: {e}")
         manager.disconnect(websocket)
 
-
 # --- Configuration des fichiers statiques ---
 CLIENT_DIR = Path(__file__).resolve().parent.parent / "client"
 app.mount("/", StaticFiles(directory=CLIENT_DIR, html=True), name="static")
@@ -117,3 +193,4 @@ app.mount("/", StaticFiles(directory=CLIENT_DIR, html=True), name="static")
 if __name__ == "__main__":
     print("Lancement du serveur web + WebSocket sur http://localhost:8000")
     uvicorn.run(app, host="0.0.0.0", port=8000)
+

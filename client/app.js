@@ -14,6 +14,8 @@ const seqEl = document.getElementById('seq');
 const lastSentEl = document.getElementById('lastSent');
 const sentCountEl = document.getElementById('sentCount');
 const sensorList = document.getElementById('sensorList');
+const latestPredictionEl = document.getElementById('latestPrediction');
+const predictionLogEl = document.getElementById('predictionLog');
 
 
 // state
@@ -23,6 +25,8 @@ let seq = 0;
 let sendInterval = Number(intervalInput.value) || 100;
 let sendTimer = null;
 let sentCount = 0;
+const PREDICTION_HOLD_STEPS = 99; // WINDOW_SIZE - 1 côté serveur
+let predictionTicksRemaining = 0;
 
 
 // latest sensor readings
@@ -110,13 +114,43 @@ function startWebSocket(){
     ws.onopen = () => {
         updateWsStatus();
         console.log('WebSocket connected as SOURCE'); // Mise à jour du log
+        stopBtn.disabled = false;
     };
     ws.onclose = () => {
         updateWsStatus();
         console.log('WebSocket disconnected');
+        stopBtn.disabled = true;
     };
     ws.onerror = (err) => {
         console.error('WebSocket error', err);
+    };
+    ws.onmessage = (event) => {
+        const raw = event.data;
+        if(!raw){
+            return;
+        }
+        try{
+            const payload = JSON.parse(raw);
+            if(payload && payload.type === 'prediction'){
+                const now = new Date().toLocaleTimeString();
+                const value = typeof payload.result === 'object'
+                    ? JSON.stringify(payload.result)
+                    : String(payload.result);
+                latestPredictionEl.textContent = value;
+                predictionTicksRemaining = PREDICTION_HOLD_STEPS;
+
+                const entry = document.createElement('div');
+                entry.className = 'prediction-entry';
+                entry.textContent = `${now} → ${value}`;
+                predictionLogEl.prepend(entry);
+
+                while(predictionLogEl.children.length > 20){
+                    predictionLogEl.removeChild(predictionLogEl.lastChild);
+                }
+            }
+        }catch(parseErr){
+            console.warn('Message WS non JSON (ignoré):', raw);
+        }
     };
 }
 
@@ -139,9 +173,18 @@ timestamp: Date.now(),
 sensors
 };
 ws.send(JSON.stringify(payload));
+seqEl.textContent = String(seq);
 lastSentEl.textContent = new Date().toLocaleTimeString();
 sentCount++;
 sentCountEl.textContent = sentCount;
+
+if(predictionTicksRemaining > 0){
+predictionTicksRemaining -= 1;
+if(predictionTicksRemaining <= 0){
+predictionTicksRemaining = 0;
+latestPredictionEl.textContent = '—';
+}
+}
 }
 
 // start sending data at intervals
@@ -273,12 +316,14 @@ startWebSocket();
 startSending();
 startBtn.style.display = 'none';
 stopBtn.style.display = 'inline-block';
+stopBtn.disabled = false;
 });
 stopBtn.addEventListener('click', () => {
 stopSending();
 stopWebSocket();
 startBtn.style.display = 'inline-block';
 stopBtn.style.display = 'none';
+stopBtn.disabled = true;
 });
 
 // initial UI state
