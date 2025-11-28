@@ -1,72 +1,58 @@
-# Mocap — Prototype local
+# Mocap — Local Prototype
 
-Objectif
---------
-Prototype local permettant de récupérer en temps réel les capteurs de plusieurs téléphones via une page web, d'agréger ces données et de les utiliser pour générer du son (via VCV Rack ou générateur local).
-
+Objective
+---------
+This local prototype allows you to capture real-time sensor data from multiple phones via a web page, aggregate the data, and use it to generate sound.
 
 ---
 
-# Tester le projet en local (mode d'emploi)
+# How to Test the Project Locally (Step-by-Step Guide)
 
-## 1. Cloner le projet
+## 1. Clone the Project
 ```sh
-git clone <url-du-repo>
+git clone <repository-url>
 cd mocap
 ```
 
-## 2. Installer les dépendances serveur
+## 2. Install Server Dependencies
 ```sh
-cd server
 pip install -r requirements.txt
 ```
 
-## 3. Lancer le serveur WebSocket
+## 3. Start the Server
 ```sh
+cd server
+```
+In two separate terminal windows, run the following commands:
+```sh
+# Terminal 1: Start the main FastAPI server
 python main.py
-```
-Tu dois voir :
-```
-WebSocket server started on ws://0.0.0.0:8765
+
+# Terminal 2: Start the WebSocket-to-OSC bridge
+python osc_sender.py
 ```
 
-## 4. Trouver l'adresse IP locale de ton ordinateur
-Dans un terminal :
+## 4. Start a Local Web Server with ngrok
+To make the web page accessible on mobile devices, use ngrok to expose the server:
 ```sh
-ipconfig getifaddr en0
-# ou
-ifconfig
+ngrok http 8000
 ```
-Note l'adresse du type `192.168.x.x` ou `10.x.x.x`.
+Open the HTTPS URL provided by ngrok in your browser.
 
-## 5. Lancer un serveur web local pour la page client
-Dans un nouveau terminal :
-```sh
-cd ../client
-python3 -m http.server 8000
-```
+## 5. Configure Connections
+Make sure to adjust the OSC ports and IP addresses in the `main.py` and `osc_sender.py` files to match your setup.
 
-## 6. Ouvrir la page web
-- Sur ton ordinateur : va sur [http://localhost:8000](http://localhost:8000)
-- Sur ton téléphone (même Wi-Fi) : va sur [http://<IP-de-ton-ordi>:8000](http://<IP-de-ton-ordi>:8000)
-
-## 7. Configurer la connexion WebSocket dans la page
-- Dans le champ "Server WebSocket", entre :
-	`ws://<IP-de-ton-ordi>:8765`  (ex : `ws://10.3.0.136:8765`)
-- Clique sur "Demander permission (iOS)" si besoin.
-- Clique sur "Démarrer".
-
-## 8. Vérifier la réception
-- Les valeurs des capteurs s'affichent dans la page.
-- Les messages reçus s'affichent dans le terminal du serveur Python.
+## 6. Verify Data Reception in Ableton
+Open Ableton Live and check if the data is being received in your MaxMSP patches.
 
 ---
 
-**Résumé rapide :**
-1. Lancer le serveur Python (`python main.py`)
-2. Lancer un serveur web local (`python3 -m http.server 8000`)
-3. Ouvrir la page web et entrer l'adresse WebSocket
-4. Démarrer l'envoi
-5. Observer les données côté serveur
+# Notes
+- **WebSocket Endpoint**: The WebSocket endpoint is `/ws`. Ensure the client connects to the correct URL, e.g., `ws://<your-server-ip>:8000/ws`.
+- **OSC Configuration**: By default, the OSC bridge sends data to `127.0.0.1` on port `8000`. Update these values in `osc_sender.py` if needed.
+- **HTTPS Requirement**: On iOS devices, motion sensors require the page to be served over HTTPS. Use ngrok to meet this requirement.
+- **Dependencies**: The project uses `FastAPI`, `python-osc`, and `websockets`. Ensure all dependencies are installed via `pip install -r requirements.txt`.
+- **Device_id** For now please choose devide_id = "1" on your phone since it is hard-coded in MaxMSP. 
 
+---
 
