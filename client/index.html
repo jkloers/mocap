@@ -1,55 +1,72 @@
 <!doctype html>
 <html lang="fr">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Sensor-to-WS - Prototype</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sensor-to-WS - Prototype</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <main class="container">
-<h1>Sensor → WebSocket</h1>
+  <h1>Sensor → WebSocket</h1>
 
+  <label>Device ID
+    <input id="deviceIdInput" type="text" placeholder="auto-généré" autocomplete="off" />
+  </label>
 
-<label>Device ID
-<input id="deviceIdInput" type="text" placeholder="auto-généré" />
-</label>
+  <label>Intervalle d'envoi (ms)
+    <input id="intervalInput" type="number" min="20" step="10" value="100" />
+  </label>
 
+  <div class="buttons">
+    <button id="permissionBtn" type="button">Demander permission (iOS)</button>
+    <button id="startBtn" class="primary" type="button">Démarrer</button>
+    <button id="stopBtn" class="danger" type="button" disabled>Arrêter</button>
+  </div>
 
-<label>Intervalle d'envoi (ms)
-<input id="intervalInput" type="number" min="20" step="10" value="100" />
-</label>
+  <!-- remplace le </section> orphelin par une vraie section -->
+  <section class="status">
+    <div>WS: <span id="wsStatus" aria-live="polite">déconnecté</span></div>
+    <div>Seq: <span id="seq" aria-live="polite">0</span></div>
+    <div>Dernier envoi: <span id="lastSent" aria-live="polite">—</span></div>
+    <div>Paquet/s envoyé(s): <span id="sentCount" aria-live="polite">0</span></div>
+  </section>
 
+  <section class="sensors">
+    <h2>Valeurs capteurs (debug)</h2>
+    <div id="sensorList" class="sensor-list"><!-- MAJ par app.js --></div>
+  </section>
 
-<div class="buttons">
-<button id="permissionBtn">Demander permission (iOS)</button>
-<button id="startBtn" class="primary">Démarrer</button>
-<button id="stopBtn" class="danger" disabled>Arrêter</button>
-</div>
+  <section class="controls" style="margin-top:12px">
+    <h2>Dataset / CSV</h2>
 
+    <div class="buttons" style="margin-top:6px">
+      <button id="moveBtn1" type="button">Mouvement 1 (1s)</button>
+      <button id="moveBtn2" type="button">Mouvement 2 (1s)</button>
+      <button id="moveBtn3" type="button">Mouvement 3 (1s)</button>
+      <button id="moveBtn4" type="button">Mouvement 4 (1s)</button>
+    </div>
 
-<div class="status">
-<div>WS: <span id="wsStatus">déconnecté</span></div>
-<div>Seq: <span id="seq">0</span></div>
-<div>Dernier envoi: <span id="lastSent">—</span></div>
-<div>Paquet/s envoyé(s): <span id="sentCount">0</span></div>
-</div>
-</section>
+    <div class="status" style="margin-top:8px">
+      <div>Exemples capturés: <span id="datasetCount" aria-live="polite">0</span></div>
+      <div>Dernier label: <span id="lastLabel" aria-live="polite">—</span></div>
+      <div>Fenêtre: <span>1000 ms</span></div>
+    </div>
 
+    <div class="buttons" style="margin-top:8px">
+      <button id="saveCsvBtn" class="primary" type="button">Save CSV</button>
+      <button id="clearCsvBtn" class="danger" type="button">Clear</button>
+    </div>
 
-<section class="sensors">
-<h2>Valeurs capteurs (debug)</h2>
-<div id="sensorList" class="sensor-list">
-<!-- Valeurs mises à jour par app.js -->
-</div>
-</section>
+    <small class="muted">
+      Astuce : démarre d’abord le streaming avec “Démarrer”. Chaque clic sur un bouton enregistre 1 s de données.
+    </small>
+  </section>
 
-
-<footer>
-<small>Prototype local — compatible iOS/Android. Ouvrir la page depuis chaque téléphone (même réseau Wi‑Fi).</small>
-</footer>
+  <footer>
+    <small>Prototype local — compatible iOS/Android. Ouvrir la page depuis chaque téléphone (même réseau Wi-Fi).</small>
+  </footer>
 </main>
-
 
 <script src="app.js"></script>
 </body>

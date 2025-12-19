@@ -1,5 +1,5 @@
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Depends, Request
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 import json
@@ -107,6 +107,28 @@ async def websocket_endpoint(
         # Gestion des erreurs générales, y compris Query validation error
         print(f"Erreur inattendue dans l'endpoint WS: {e}")
         manager.disconnect(websocket)
+
+# --- Endpoint pour recevoir un CSV depuis le navigateur ---
+@app.post("/upload_csv")
+async def upload_csv(request: Request):
+    """
+    Reçoit un CSV envoyé par le navigateur (depuis le téléphone) et le sauvegarde sur le PC.
+    """
+    try:
+        data = await request.body()  # Contenu brut du CSV
+        ts = asyncio.get_event_loop().time()  # timestamp relatif
+        # Nom du fichier avec timestamp réel
+        from datetime import datetime
+        file_name = f"dataset_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        file_path = Path(file_name)
+
+        file_path.write_bytes(data)
+        print(f"✅ Fichier CSV reçu et sauvegardé sous {file_path.resolve()}")
+        return {"status": "ok", "file": file_name}
+
+    except Exception as e:
+        print(f"❌ Erreur lors de la sauvegarde du CSV : {e}")
+        return {"status": "error", "detail": str(e)}
 
 
 # --- Configuration des fichiers statiques ---

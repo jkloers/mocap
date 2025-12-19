@@ -5,168 +5,158 @@ import websockets
 from pythonosc.udp_client import SimpleUDPClient
 
 # -------------------------------------------------------------------
-# 1. CONFIGURATION 
+# 1. CONFIGURATION
 # -------------------------------------------------------------------
-# URI du serveur WebSocket (adapter si votre endpoint WS est /ws)
+# URI du serveur WebSocket (correspond à /ws?client_type=receiver)
 WS_SERVER_URI = "ws://127.0.0.1:8000/ws?client_type=receiver"
 
-# Destination OSC (VCV Rack / MaxMSP)
+# Destination OSC (par défaut : localhost:9000)
 OSC_IP = "127.0.0.1"
 OSC_PORT = 9000
 
-# Base de l'adresse OSC (les capteurs seront envoyés sous /mocap/<deviceId>/...)
+# Base des adresses OSC
 OSC_BASE = "/mocap"
 
 # -------------------------------------------------------------------
 # 2. UTILITAIRES
 # -------------------------------------------------------------------
 def sanitize_id(device_id: str) -> str:
-    """Remplace les caractères non sûrs par '_' pour utilisation dans une adresse OSC."""
+    """Nettoie le device_id pour être sûr qu’il soit valide dans une adresse OSC."""
     if not isinstance(device_id, str):
         device_id = str(device_id)
     return re.sub(r'[^A-Za-z0-9_\-]', '_', device_id)
 
 def safe_float(v, default=0.0):
+    """Convertit en float sans lever d’erreur."""
     try:
         return float(v)
     except Exception:
         return float(default)
+
+def osc_send(addr: str, common_args: list, extra: list):
+    """
+    Envoie un message OSC en filtrant les None et en gérant les erreurs.
+    """
+    args = [a for a in common_args if a is not None]
+    args.extend(extra)
+    try:
+        osc_client.send_message(addr, args)
+    except Exception as e:
+        print(f"[ERROR] Envoi OSC vers {addr} échoué : {e}")
 
 # -------------------------------------------------------------------
 # 3. INITIALISATION CLIENT OSC
 # -------------------------------------------------------------------
 try:
     osc_client = SimpleUDPClient(OSC_IP, OSC_PORT)
-    print(f"Client OSC prêt → udp://{OSC_IP}:{OSC_PORT} (base: {OSC_BASE})")
+    print(f"✅ Client OSC prêt → udp://{OSC_IP}:{OSC_PORT} (base: {OSC_BASE})")
 except Exception as e:
-    print(f"Erreur lors de la création du client OSC : {e}")
-    # En cas d'échec de l'initialisation de l'OSC, l'application ne peut pas fonctionner.
+    print(f"❌ Erreur lors de la création du client OSC : {e}")
     raise
 
 # -------------------------------------------------------------------
-# 4. PONT WS → OSC : ENVOI SÉPARÉ PAR CAPTEUR (MEILLEURE PRATIQUE)
+# 4. PONT WS → OSC
 # -------------------------------------------------------------------
 async def ws_bridge():
     """
-    Se connecte au serveur WebSocket et envoie, pour chaque message JSON reçu,
-    un message OSC distinct par type de capteur.
+    Se connecte au serveur WebSocket et traduit les messages JSON reçus en messages OSC.
+    Garde la connexion ouverte indéfiniment (reconnexion automatique en cas d’échec).
     """
     while True:
         try:
-            # Tente d'établir une connexion WS
-            async with websockets.connect(WS_SERVER_URI) as websocket:
-                print(f"Connecté au serveur WebSocket : {WS_SERVER_URI}")
+            async with websockets.connect(
+                WS_SERVER_URI,
+                ping_interval=20,
+                ping_timeout=20,
+                max_queue=32,
+                close_timeout=5
+            ) as websocket:
+                print(f"🔌 Connecté au serveur WebSocket : {WS_SERVER_URI}")
                 
-                # --- DÉBUT DE LA BOUCLE DE RÉCEPTION ---
-                try:
-                    async for message in websocket:
-                        # LE MESSAGE SE LOGUE SEULEMENT ICI LORSQU'IL EST ENVOYÉ PAR LE SERVEUR
-                        print("[INFO] Message WS reçu - Décodage...")
-                        
-                        try:
-                            data = json.loads(message)
-                            # print(f"WS data received: {data}") # Commenté pour éviter le spam, décommenter si besoin
-                        except json.JSONDecodeError:
-                            print("[ERROR] Message WS non JSON, skip.")
-                            continue
+                async for message in websocket:
+                    print("[INFO] Message WS reçu — décodage...")
 
-                        device_id = data.get("deviceId", "unknown")
-                        seq = data.get("seq", None)
-                        timestamp = data.get("timestamp", None)
-                        sensors = data.get("sensors", {}) or {}
+                    # --- Décodage JSON ---
+                    try:
+                        data = json.loads(message)
+                    except json.JSONDecodeError:
+                        print("[ERROR] Message WS non valide (pas JSON). Ignoré.")
+                        continue
 
-                        sid = sanitize_id(device_id)
+                    device_id = data.get("deviceId", "unknown")
+                    seq = data.get("seq")
+                    timestamp = data.get("timestamp")
+                    sensors = data.get("sensors", {}) or {}
 
-                        # helper to build common prefix args
-                        common_args = []
-                        if seq is not None:
-                            try:
-                                common_args.append(int(seq))
-                            except Exception:
-                                common_args.append(str(seq))
+                    sid = sanitize_id(device_id)
+                    common_args = []
+
+                    # Ajoute seq et timestamp si dispo
+                    try:
+                        common_args.append(int(seq))
+                    except Exception:
+                        common_args.append(None)
+                    try:
+                        common_args.append(int(timestamp))
+                    except Exception:
+                        common_args.append(None)
+
+                    # === 1) ACCELEROMÈTRE ===
+                    accel = sensors.get("accelerometer") or sensors.get("acceleration")
+                    if accel:
+                        ax, ay, az = (
+                            safe_float(accel.get("x")),
+                            safe_float(accel.get("y")),
+                            safe_float(accel.get("z")),
+                        )
+                        addr = f"{OSC_BASE}/{sid}/accelerometer"
+                        osc_send(addr, common_args, [ax, ay, az])
+
+                    # === 2) GYROSCOPE ===
+                    gyro = sensors.get("gyroscope")
+                    if gyro:
+                        if all(k in gyro for k in ("x", "y", "z")):
+                            ga, gb, gc = map(safe_float, (gyro["x"], gyro["y"], gyro["z"]))
+                        elif all(k in gyro for k in ("alpha", "beta", "gamma")):
+                            ga, gb, gc = map(
+                                safe_float, (gyro["alpha"], gyro["beta"], gyro["gamma"])
+                            )
                         else:
-                            common_args.append(None)
-                        
-                        if timestamp is not None:
-                            try:
-                                common_args.append(int(timestamp))
-                            except Exception:
-                                common_args.append(str(timestamp))
-                        else:
-                            common_args.append(None)
+                            print("[WARN] Gyro sans composantes reconnues :", gyro)
+                            ga = gb = gc = 0.0
+                        addr = f"{OSC_BASE}/{sid}/gyroscope"
+                        osc_send(addr, common_args, [ga, gb, gc])
 
+                    # === 3) ORIENTATION ===
+                    orient = sensors.get("orientation")
+                    if orient:
+                        oa, ob, oc = (
+                            safe_float(orient.get("alpha")),
+                            safe_float(orient.get("beta")),
+                            safe_float(orient.get("gamma")),
+                        )
+                        addr = f"{OSC_BASE}/{sid}/orientation"
+                        osc_send(addr, common_args, [oa, ob, oc])
 
-                        # 1) ACCELEROMETER (x,y,z)
-                        accel = sensors.get("accelerometer") or sensors.get("acceleration")
-                        if accel:
-                            ax = safe_float(accel.get("x"))
-                            ay = safe_float(accel.get("y"))
-                            az = safe_float(accel.get("z"))
-                            addr = f"{OSC_BASE}/{sid}/accelerometer"
-                            args = [a for a in common_args]  # copy
-                            args.extend([ax, ay, az])
-                            try:
-                                osc_client.send_message(addr, args)
-                                # print(f"OSC -> {addr} {args}") # Commenté pour éviter le spam, décommenter si besoin
-                            except Exception as e:
-                                print(f"[ERROR] Erreur envoi OSC accel: {e}")
-
-                        # 2) GYROSCOPE (alpha/beta/gamma or x/y/z)
-                        gyro = sensors.get("gyroscope")
-                        if gyro:
-                            # prefer x,y,z keys, fallback to alpha/beta/gamma
-                            if all(k in gyro for k in ("alpha","beta","gamma")):
-                                ga = safe_float(gyro.get("alpha"))
-                                gb = safe_float(gyro.get("beta"))
-                                gc = safe_float(gyro.get("gamma"))
-                            else:
-                                ga = safe_float(gyro.get("x"))
-                                gb = safe_float(gyro.get("y"))
-                                gc = safe_float(gyro.get("z"))
-                            addr = f"{OSC_BASE}/{sid}/gyroscope"
-                            args = [a for a in common_args]
-                            args.extend([ga, gb, gc])
-                            try:
-                                osc_client.send_message(addr, args)
-                                # print(f"OSC -> {addr} {args}") # Commenté pour éviter le spam, décommenter si besoin
-                            except Exception as e:
-                                print(f"[ERROR] Erreur envoi OSC gyro: {e}")
-
-                        # 3) ORIENTATION (alpha/beta/gamma)
-                        orient = sensors.get("orientation")
-                        if orient:
-                            oa = safe_float(orient.get("alpha"))
-                            ob = safe_float(orient.get("beta"))
-                            oc = safe_float(orient.get("gamma"))
-                            addr = f"{OSC_BASE}/{sid}/orientation"
-                            args = [a for a in common_args]
-                            args.extend([oa, ob, oc])
-                            try:
-                                osc_client.send_message(addr, args)
-                                # print(f"OSC -> {addr} {args}") # Commenté pour éviter le spam, décommenter si besoin
-                            except Exception as e:
-                                print(f"[ERROR] Erreur envoi OSC orientation: {e}")
-                
-                except websockets.exceptions.ConnectionClosed as e:
-                    # Capture la fermeture de la connexion (ex. si le serveur tombe après la connexion)
-                    print(f"[WARN] Connexion WS fermée de manière inattendue : {e}")
-
-        except (websockets.exceptions.InvalidURI, ConnectionRefusedError) as e:
-            print(f"[WARN] Connexion WS impossible (serveur 8000 non actif ou URI invalide) : {e}. Nouvelle tentative dans 5s...")
+        except websockets.exceptions.ConnectionClosed as e:
+            print(f"[WARN] Connexion WS fermée : {e}. Tentative de reconnexion dans 5s...")
+            await asyncio.sleep(5)
+        except (ConnectionRefusedError, websockets.exceptions.InvalidURI) as e:
+            print(f"[WARN] Serveur WebSocket injoignable : {e}. Nouvelle tentative dans 5s...")
             await asyncio.sleep(5)
         except KeyboardInterrupt:
-            print("Interruption clavier, arrêt.")
+            print("🛑 Arrêt manuel demandé (Ctrl+C).")
             break
         except Exception as e:
-            print(f"[ERROR] Erreur inattendue globale: {e}. Nouvelle tentative dans 5s...")
+            print(f"[ERROR] Erreur inattendue : {e}. Nouvelle tentative dans 5s...")
             await asyncio.sleep(5)
 
 # -------------------------------------------------------------------
-# 5. LANCEMENT
+# 5. MAIN
 # -------------------------------------------------------------------
 if __name__ == "__main__":
-    print("Démarrage pont WebSocket → OSC (Ctrl+C pour quitter)...")
+    print("🚀 Démarrage du pont WebSocket → OSC (Ctrl+C pour quitter)")
     try:
         asyncio.run(ws_bridge())
     except KeyboardInterrupt:
-        print("Arrêt demandé.")
+        print("🛑 Arrêt demandé par l’utilisateur.")

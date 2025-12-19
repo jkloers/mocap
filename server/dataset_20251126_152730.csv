@@ -1,0 +1,4 @@
+label,device_id,start_time_iso,duration_ms,accel,gyro,orientation,mag,gravity
+move_1,,2025-11-26T14:27:26.935Z,1000,[],[],[],[],[]
+move_2,,2025-11-26T14:27:29.010Z,1000,[],[],[],[],[]
+move_3,,2025-11-26T14:27:30.102Z,1000,[],[],[],[],[]
