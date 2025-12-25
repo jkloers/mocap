@@ -69,4 +69,28 @@ python3 -m http.server 8000
 4. Démarrer l'envoi
 5. Observer les données côté serveur
 
+# Générer ses propres données 
+
+## Lancer l'enregistrement :
+Maintenant que tout est set up et qu'on voit bien sur l'interface les données qui évoluent:
+- Accéléromètre, ax, ay, az
+- Gyroscope, gx, gy, gz
+- Orientation, alpha, beta, gamma
+
+On peut utiliser les boutons :
+Mouvement 1, 2 ,3 ou 4 pour lancer l'enregistrement d'un mouvement pendant une seconde.
+Les mouvements seront enregistres avec les étiquettes 1, 2, 3 ou 4, à vous de les affecter et d'être consistent par rapport à ces valeurs.
+L'host local enregistre l'historique des ces mouvements, donc label du mouvement et données a chaque interval de temps
+
+## Récupérer les données :
+Une fois les mouvements enregistrés, on peut les exporter via le bouton d'exportation csv.
+On récupère un fichier csv non nettoyé avec les données associées a chaque mouvement, l'host envoi les données via un paquet websocket au serveur !
+
+## Preprocessing :
+Enfin, le script de preprocessing data/data_preprocessing.py permet de reformater ces données dans un nouveau csv, ou on a chaque mouvement son étiquette et la progression temporelle de chaque variable. Le script est prévu pour un interval à 60 prise pour un mouvement (1s). Soit :
+- ax, ay, az, gx, gy, gz, alpha, beta, gamma à t=1/60
+- ax, ay, az, gx, gy, gz, alpha, beta, gamma à t=2/60
+...
+- ax, ay, az, gx, gy, gz, alpha, beta, gamma à t=60/60
+
 
