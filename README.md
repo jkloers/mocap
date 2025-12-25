@@ -69,6 +69,11 @@ python3 -m http.server 8000
 4. Démarrer l'envoi
 5. Observer les données côté serveur
 
+![Aperçu de l'interface](data/trash/display.png)
+
+---
+
+
 # Générer ses propres données 
 
 ## Lancer l'enregistrement :
