@@ -64,6 +64,22 @@
       ws.onopen = () => { updateWsStatus(); console.log('WebSocket connected as SOURCE'); };
       ws.onclose = () => { updateWsStatus(); console.log('WebSocket disconnected'); };
       ws.onerror = (err) => { console.error('WebSocket error', err); };
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg && msg.type === "prediction") {
+            const predLabel = document.getElementById("predLabel");
+            const predMeta  = document.getElementById("predMeta");
+            if (predLabel) predLabel.textContent = msg.label || "—";
+            if (predMeta) predMeta.textContent = `margin=${(msg.margin ?? 0).toFixed(2)} | activity=${(msg.activity ?? 0).toFixed(2)}`;
+      
+            // option: vibration / son
+            // if (navigator.vibrate) navigator.vibrate(80);
+          }
+        } catch (e) {}
+        console.log("[CLIENT] Message from server:", msg);
+      };
+      
     }
   
     function stopWebSocket() {

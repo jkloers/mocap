@@ -6,6 +6,10 @@ import json
 from typing import Set
 import asyncio
 
+from models.hmm import LiveHMMRecognizer
+import numpy as np
+
+
 # Initialiser l'application FastAPI
 # L'instance de ConnectionManager sera maintenant gérée par l'application
 app = FastAPI()
@@ -59,6 +63,8 @@ def get_manager():
     """Fonction de dépendance pour l'injection du ConnectionManager."""
     return manager
 
+recognizers = {}  # deviceId -> LiveHMMRecognizer
+
 # --- Endpoint WebSocket ---
 # Ajout d'un paramètre de requête 'client_type' pour identifier le rôle
 @app.websocket("/ws")
@@ -78,6 +84,52 @@ async def websocket_endpoint(
             while True:
                 # 1. Attendre un message de la SOURCE
                 data = await websocket.receive_text()
+
+                # --- Parse JSON source ---
+                try:
+                    payload = json.loads(data)
+                except Exception:
+                    payload = None
+
+                if payload and isinstance(payload, dict):
+                    device_id = payload.get("deviceId", "unknown")
+                    sensors = payload.get("sensors") or {}
+
+                    # Extract sensors (mêmes noms que osc_sender.py utilise) :contentReference[oaicite:6]{index=6}
+                    acc = sensors.get("accelerometer") or sensors.get("acceleration") or {}
+                    gyro = sensors.get("gyroscope") or {}
+                    ori = sensors.get("orientation") or {}
+
+                    sample = np.array([
+                        float(acc.get("x", 0.0)), float(acc.get("y", 0.0)), float(acc.get("z", 0.0)),
+                        float(gyro.get("x", 0.0)), float(gyro.get("y", 0.0)), float(gyro.get("z", 0.0)),
+                        float(ori.get("alpha", 0.0)), float(ori.get("beta", 0.0)), float(ori.get("gamma", 0.0)),
+                    ], dtype=np.float32)
+
+                    rec = recognizers.get(device_id)
+                    if rec is None:
+                        rec = LiveHMMRecognizer(window_size=60, step_size=3)
+                        recognizers[device_id] = rec
+
+                    pred = rec.add_sample(sample)
+                    if pred is not None:
+                        print(f"[SERVER] Sending prediction to client: {pred['label']}")
+                        msg = {
+                            "type": "prediction",
+                            "deviceId": device_id,
+                            "label": pred["label"],
+                            "margin": pred["margin"],
+                            "activity": pred["activity"],
+                            "timestamp": payload.get("timestamp"),
+                            "seq": payload.get("seq"),
+                        }
+
+                        # 1) renvoyer au téléphone (IMPORTANT)
+                        await websocket.send_text(json.dumps(msg))
+
+                        # 2) optionnel: aussi broadcast aux receivers (OSC pourra ignorer)
+                        await manager.broadcast(json.dumps(msg))
+
 
                 # Traiter et logger
                 try:
