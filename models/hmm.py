@@ -22,11 +22,11 @@ class LiveHMMRecognizer:
         scaler_path: str = "models/scaler.joblib",
         models_path: str = "models/hmm_models.joblib",
         # --- NO MOVE gate ---
-        activity_threshold: float = 10,   # à ajuster
+        activity_threshold: float =10,   # à ajuster
         # --- décision HMM ---
-        min_margin: float = 8.0,            # best - second_best (à ajuster)
+        min_margin: float = 512,            # best - second_best (à ajuster)
         # --- anti-spam ---
-        cooldown_ms: int = 700,             # à ajuster
+        cooldown_ms: int = 800,             # à ajuster
         debug: bool = True
     ):
         self.window_size = window_size

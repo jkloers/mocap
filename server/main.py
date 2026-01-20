@@ -5,6 +5,10 @@ from pathlib import Path
 import json
 from typing import Set
 import asyncio
+import sys
+
+# Add parent directory to path to allow imports when running as script
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from models.hmm import LiveHMMRecognizer
 import numpy as np

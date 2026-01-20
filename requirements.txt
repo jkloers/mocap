@@ -2,4 +2,7 @@ websockets
 python-osc   # Only if using OSC
 fastapi 
 uvicorn
-python-osc
+hmmlearn
+scikit-learn
+joblib
+numpy
