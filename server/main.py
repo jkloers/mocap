@@ -12,7 +12,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from models.hmm import LiveHMMRecognizer
 import numpy as np
+from pythonosc.udp_client import SimpleUDPClient
+import re
 
+# --- Configuration OSC ---
+OSC_IP = "127.0.0.1"  # Adresse IP de destination OSC
+OSC_PORT = 9000       # Port OSC de destination
+OSC_BASE = "/mocap"   # Base des adresses OSC
+
+def sanitize_osc_path(device_id: str) -> str:
+    """Nettoie le device_id pour être valide dans une adresse OSC."""
+    if not isinstance(device_id, str):
+        device_id = str(device_id)
+    return re.sub(r'[^A-Za-z0-9_\-]', '_', device_id)
+
+# Initialiser le client OSC
+try:
+    osc_client = SimpleUDPClient(OSC_IP, OSC_PORT)
+    print(f"✅ Client OSC initialisé → udp://{OSC_IP}:{OSC_PORT} (base: {OSC_BASE})")
+except Exception as e:
+    print(f"❌ Erreur lors de l'initialisation du client OSC : {e}")
+    osc_client = None
 
 # Initialiser l'application FastAPI
 # L'instance de ConnectionManager sera maintenant gérée par l'application
@@ -133,6 +153,25 @@ async def websocket_endpoint(
 
                         # 2) optionnel: aussi broadcast aux receivers (OSC pourra ignorer)
                         await manager.broadcast(json.dumps(msg))
+                        
+                        # 3) Envoyer la prédiction via OSC (uniquement si geste détecté avec certitude)
+                        if osc_client is not None:
+                            try:
+                                # Adresse OSC: /mocap/{deviceId}/prediction
+                                sanitized_id = sanitize_osc_path(device_id)
+                                osc_address = f"{OSC_BASE}/{sanitized_id}/prediction"
+                                # Arguments: label (string), margin (float), activity (float), timestamp (int ou 0), seq (int ou 0)
+                                osc_args = [
+                                    pred["label"],           # label du geste
+                                    float(pred["margin"]),   # marge de confiance
+                                    float(pred["activity"]), # niveau d'activité
+                                    int(payload.get("timestamp", 0)),  # timestamp
+                                    int(payload.get("seq", 0))        # numéro de séquence
+                                ]
+                                osc_client.send_message(osc_address, osc_args)
+                                print(f"[OSC] Envoyé: {osc_address} → {pred['label']} (margin={pred['margin']:.2f})")
+                            except Exception as e:
+                                print(f"[OSC ERROR] Erreur lors de l'envoi OSC: {e}")
 
 
                 # Traiter et logger
