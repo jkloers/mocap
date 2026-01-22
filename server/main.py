@@ -6,6 +6,7 @@ import json
 from typing import Set
 import asyncio
 import sys
+import time
 
 # Add parent directory to path to allow imports when running as script
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -89,6 +90,29 @@ def get_manager():
 
 recognizers = {}  # deviceId -> LiveHMMRecognizer
 
+# --- Tâche périodique pour signal OSC de test ---
+async def send_osc_test_signal():
+    """Envoie un signal OSC de test toutes les 4 secondes pour vérifier la connexion."""
+    test_counter = 0
+    while True:
+        await asyncio.sleep(4.0)  # Attendre 4 secondes
+        if osc_client is not None:
+            try:
+                test_counter += 1
+                osc_address = f"{OSC_BASE}/test/ping"
+                '''osc_args = [
+                    "test",                    # message de test
+                    float(test_counter),       # compteur
+                    float(time.time())         # timestamp
+                ]'''
+                osc_args = [
+                    10        # timestamp
+                ]
+                osc_client.send_message(osc_address, osc_args)
+                print(f"[OSC TEST] Signal de test envoyé #{test_counter} → {osc_address}")
+            except Exception as e:
+                print(f"[OSC TEST ERROR] Erreur lors de l'envoi du signal de test: {e}")
+
 # --- Endpoint WebSocket ---
 # Ajout d'un paramètre de requête 'client_type' pour identifier le rôle
 @app.websocket("/ws")
@@ -160,16 +184,17 @@ async def websocket_endpoint(
                                 # Adresse OSC: /mocap/{deviceId}/prediction
                                 sanitized_id = sanitize_osc_path(device_id)
                                 osc_address = f"{OSC_BASE}/{sanitized_id}/prediction"
-                                # Arguments: label (string), margin (float), activity (float), timestamp (int ou 0), seq (int ou 0)
-                                osc_args = [
-                                    pred["label"],           # label du geste
-                                    float(pred["margin"]),   # marge de confiance
-                                    float(pred["activity"]), # niveau d'activité
-                                    int(payload.get("timestamp", 0)),  # timestamp
-                                    int(payload.get("seq", 0))        # numéro de séquence
-                                ]
+                                # Convertir le label en entier (1, 2 ou 3)
+                                try:
+                                    gesture_number = int(pred["label"])
+                                except (ValueError, TypeError):
+                                    # Si le label n'est pas un nombre, essayer d'extraire le chiffre
+                                    gesture_number = 0
+                                
+                                # Envoyer uniquement le numéro du geste (1, 2 ou 3)
+                                osc_args = [gesture_number]
                                 osc_client.send_message(osc_address, osc_args)
-                                print(f"[OSC] Envoyé: {osc_address} → {pred['label']} (margin={pred['margin']:.2f})")
+                                print(f"[OSC] Envoyé: {osc_address} → {gesture_number}")
                             except Exception as e:
                                 print(f"[OSC ERROR] Erreur lors de l'envoi OSC: {e}")
 
@@ -229,6 +254,13 @@ async def upload_csv(request: Request):
 # --- Configuration des fichiers statiques ---
 CLIENT_DIR = Path(__file__).resolve().parent.parent / "client"
 app.mount("/", StaticFiles(directory=CLIENT_DIR, html=True), name="static")
+
+# --- Démarrage de la tâche de test OSC ---
+@app.on_event("startup")
+async def startup_event():
+    """Lance la tâche de test OSC au démarrage du serveur."""
+    asyncio.create_task(send_osc_test_signal())
+    print("✅ Tâche de test OSC démarrée (signal toutes les 4 secondes)")
 
 # Lancer le serveur avec Uvicorn
 if __name__ == "__main__":
